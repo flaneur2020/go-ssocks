@@ -1,4 +1,7 @@
+all: build
+
 build:
-	go build -o ./ssocks-client ./main.go
+	go build -o bin/ssocks-local cmd/ssocks-local/main.go
+
 test:
 	go test -v -cover ./...

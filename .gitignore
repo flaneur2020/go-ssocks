@@ -10,3 +10,4 @@ ssocks-client
 *.out
 .glide/
 vendor/
+bin/

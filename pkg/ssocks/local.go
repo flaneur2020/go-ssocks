@@ -17,7 +17,7 @@ type socksRequest struct {
 	Ver      byte
 	Cmd      byte
 	AddrType byte
-	Addr     string
+	Addr     []byte
 	Port     uint16
 }
 
@@ -59,8 +59,12 @@ func (s *LocalServer) ListenAndServe() {
 }
 
 func (s *LocalServer) handleConnection(conn net.Conn) {
+	defer func() {
+		log.Printf("handleConnection Close()")
+		conn.Close()
+	}()
 	// the client will create a new SOCKS connection on EVERY new TCP connection
-	err := s.handshake(conn)
+	err := handshake(conn)
 	if err != nil {
 		log.Printf("SOCKS5 handshake error: %s\n", err)
 		return
@@ -71,9 +75,19 @@ func (s *LocalServer) handleConnection(conn net.Conn) {
 		return
 	}
 	log.Printf("get request: %v\n", req)
+	// send confirmation
+	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
+	if err != nil {
+		log.Printf("SOCKS5 conn confirmation error: %s\n", err)
+		return
+	}
+	s.handleProxy(conn)
 }
 
-func (s *LocalServer) handshake(conn net.Conn) error {
+func (s *LocalServer) handleProxy(conn net.Conn) {
+}
+
+func handshake(conn net.Conn) error {
 	const (
 		iVer       = 0
 		iNumMethod = 1
@@ -116,6 +130,12 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	req.Ver = buf[offset]
 	req.Cmd = buf[offset+1]
 	req.AddrType = buf[offset+3]
+	if req.Ver != SocksVer5 {
+		return nil, errVer
+	}
+	if req.Cmd != SocksCmdConnect {
+		return nil, errCmd
+	}
 	offset += n
 	// read the addr by addr type
 	switch req.AddrType {
@@ -131,7 +151,7 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Addr = string(buf[offset : offset+n])
+	req.Addr = buf[offset : offset+n]
 	offset += n
 	// read the port
 	n, err = io.ReadFull(conn, buf[offset:(offset+2)])

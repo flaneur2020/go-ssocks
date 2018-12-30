@@ -1,7 +1,11 @@
 package ssocks
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/md5"
+	"crypto/rand"
+	"io"
 )
 
 type Cipher struct {
@@ -12,9 +16,33 @@ func NewCipher() (*Cipher, error) {
 }
 
 type Encrypter struct {
-	Key          []byte
-	IV           []byte
-	cipherMethod string
+	Key    []byte
+	IV     []byte
+	stream cipher.Stream
+}
+
+func NewEncrypter(cipherMethod, password []byte, keyLen, ivLen int) (*Encrypter, error) {
+	key := evpBytesToKey(password, keyLen)
+	iv := genIV(ivLen)
+	stream, err := newAesCfbStream(key, iv)
+	if err != nil {
+		return nil, err
+	}
+	enc := &Encrypter{
+		IV:     iv,
+		Key:    key,
+		stream: stream,
+	}
+	return enc, nil
+}
+
+func newAesCfbStream(key, iv []byte) (cipher.Stream, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	stream := cipher.NewCFBEncrypter(block, iv)
+	return stream, nil
 }
 
 // evpBytesToKey implements the Openssl EVP_BytesToKey method
@@ -36,11 +64,11 @@ func evpBytesToKey(password []byte, keyLen int) (key []byte) {
 	return concat[:keyLen]
 }
 
-func NewEncrypter(cipherMethod, password []byte) (*Encrypter, error) {
-	// key := evpBytesToKey(password, 12)
-	// block, err := aes.NewCipher(key)
-	//if err != nil {
-	//	return nil, err
-	//}
-	return nil, nil
+func genIV(ivLen int) []byte {
+	iv := make([]byte, ivLen)
+	_, err := io.ReadFull(rand.Reader, iv)
+	if err != nil {
+		panic(err)
+	}
+	return iv
 }

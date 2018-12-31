@@ -5,35 +5,64 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+	"fmt"
 	"io"
 )
 
 type Cipher struct {
+	cipherMethod string
+	key          []byte
+	encStream    cipher.Stream
+	decStream    cipher.Stream
 }
 
-func NewCipher() (*Cipher, error) {
-	return nil, nil
+type cipherMethod struct {
+	KeyLen        int
+	IvLen         int
+	NewStreamFunc func(key []byte, iv []byte) (cipher.Stream, error)
 }
 
-type Encrypter struct {
-	Key    []byte
-	IV     []byte
-	stream cipher.Stream
+var cipherMethodMap = map[string]cipherMethod{
+	"aes-128-cfb": {16, 16, newAesCfbStream},
 }
 
-func NewEncrypter(cipherMethod, password []byte, keyLen, ivLen int) (*Encrypter, error) {
-	key := evpBytesToKey(password, keyLen)
-	iv := genIV(ivLen)
-	stream, err := newAesCfbStream(key, iv)
+func NewCipher(cipherMethod string, password []byte) (*Cipher, error) {
+	m := cipherMethodMap[cipherMethod]
+	key := evpBytesToKey(password, m.KeyLen)
+	iv := genIV(m.IvLen)
+	encStream, err := m.NewStreamFunc(key, iv)
 	if err != nil {
-		return nil, err
+		panic(fmt.Sprintf("fail to new encStream: %s", err))
 	}
-	enc := &Encrypter{
-		IV:     iv,
-		Key:    key,
-		stream: stream,
+	c := Cipher{
+		key:       key,
+		encStream: encStream,
+		decStream: nil,
 	}
-	return enc, nil
+	return &c, nil
+}
+
+func (c *Cipher) setupDecryptIV(iv []byte) {
+	if c.decStream != nil {
+		panic("decStream has already been setuped")
+	}
+	m := cipherMethodMap[c.cipherMethod]
+	decStream, err := m.NewStreamFunc(c.key, iv)
+	if err != nil {
+		panic(fmt.Sprintf("fail to new decStream: %s", err))
+	}
+	c.decStream = decStream
+}
+
+func (c *Cipher) encrypt(dst, src []byte) {
+	c.encStream.XORKeyStream(dst, src)
+}
+
+func (c *Cipher) decrypt(dst, src []byte) {
+	if c.decStream == nil {
+		panic("decStream has not been setuped yet, please setupDecryptIV() first")
+	}
+	c.decStream.XORKeyStream(dst, src)
 }
 
 func newAesCfbStream(key, iv []byte) (cipher.Stream, error) {

@@ -4,7 +4,7 @@ import (
 	"io"
 	"net"
 
-	"git.in.zhihu.com/go/box/log"
+	"log"
 )
 
 type ShadowsocksConn struct {
@@ -23,14 +23,14 @@ func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *Shado
 		cipher:     cipher,
 		conn:       conn,
 		decIv:      nil,
-		encIV:      nil,
+		encIv:      nil,
 		readBuf:    make([]byte, 512),
 		writeBuf:   make([]byte, 512),
 	}
 	return c
 }
 
-func Dial(remoteAddr, password, cipherMethod string) (*ShadowsocksConn, error) {
+func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte) (*ShadowsocksConn, error) {
 	cipher, err := NewCipher(cipherMethod, password)
 	if err != nil {
 		return nil, err
@@ -40,6 +40,11 @@ func Dial(remoteAddr, password, cipherMethod string) (*ShadowsocksConn, error) {
 		return nil, err
 	}
 	ssconn := NewShadowsocksConn(remoteAddr, cipher, conn)
+	_, err = ssconn.Write(addrBuf)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
 	return ssconn, nil
 }
 
@@ -52,11 +57,13 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 		decIv := make([]byte, sc.cipher.IvLen)
 		_, err := io.ReadFull(sc.conn, decIv)
 		if err != nil {
+			log.Printf("read dec iv failed")
 			return 0, err
 		}
 		sc.cipher.SetupDecryptIV(decIv)
 		sc.decIv = decIv
 	}
+	log.Printf("ssconn: read: decIv: %v\n", sc.decIv)
 	cipherBuf := sc.readBuf
 	if len(b) > len(cipherBuf) {
 		log.Printf("ShadowsocksConn.Read got buf(%d) longer than readBuf(%d)\n", len(b), len(cipherBuf))
@@ -65,19 +72,21 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 		cipherBuf = cipherBuf[:len(b)]
 	}
 	n, err := sc.conn.Read(cipherBuf)
+	log.Printf("Read raw b: %v n:%d", cipherBuf[0:n], n)
 	if n > 0 {
 		sc.cipher.Decrypt(b[0:n], cipherBuf[0:n])
 	}
+	log.Printf("Read b: %v n:%d", b[0:n], n)
 	return n, err
 }
 
 func (sc *ShadowsocksConn) Write(b []byte) (int, error) {
 	if sc.encIv == nil {
-		n, err := sc.conn.Write(sc.encIv)
+		_, err := sc.conn.Write(sc.cipher.EncIv)
 		if err != nil {
 			return 0, err
 		}
-		sc.encIv = sc.cipher.encIv
+		sc.encIv = sc.cipher.EncIv
 	}
 	cipherBuf := sc.writeBuf
 	if len(b) > len(cipherBuf) {
@@ -86,6 +95,7 @@ func (sc *ShadowsocksConn) Write(b []byte) (int, error) {
 	} else {
 		cipherBuf = cipherBuf[:len(b)]
 	}
-	sc.cipher.Decrypt(cipherBuf, b)
-	return c.conn.Write(cipherBuf)
+	sc.cipher.Encrypt(cipherBuf, b)
+	n, err := sc.conn.Write(cipherBuf)
+	return n, err
 }

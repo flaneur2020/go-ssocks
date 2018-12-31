@@ -22,13 +22,14 @@ type Cipher struct {
 }
 
 type cipherMethod struct {
-	KeyLen        int
-	IvLen         int
-	NewStreamFunc func(key []byte, iv []byte) (cipher.Stream, error)
+	KeyLen       int
+	IvLen        int
+	NewEncStream func(key []byte, iv []byte) (cipher.Stream, error)
+	NewDecStream func(key []byte, iv []byte) (cipher.Stream, error)
 }
 
 var cipherMethodMap = map[string]cipherMethod{
-	"aes-128-cfb": {16, 16, newAesCfbStream},
+	"aes-128-cfb": {16, 16, newAesCfbEncStream, newAesCfbDecStream},
 }
 
 func NewCipher(cipherMethod string, password string) (*Cipher, error) {
@@ -38,7 +39,7 @@ func NewCipher(cipherMethod string, password string) (*Cipher, error) {
 	}
 	key := evpBytesToKey([]byte(password), m.KeyLen)
 	encIv := genIV(m.IvLen)
-	encStream, err := m.NewStreamFunc(key, encIv)
+	encStream, err := m.NewEncStream(key, encIv)
 	if err != nil {
 		panic(fmt.Sprintf("fail to new encStream: %s", err))
 	}
@@ -61,7 +62,7 @@ func (c *Cipher) SetupDecryptIV(iv []byte) {
 	if !ok {
 		panic(fmt.Sprintf("cipherMethod(%s) not found", c.cipherMethod))
 	}
-	decStream, err := m.NewStreamFunc(c.key, iv)
+	decStream, err := m.NewDecStream(c.key, iv)
 	if err != nil {
 		panic(fmt.Sprintf("fail to new decStream: %s", err))
 	}
@@ -79,12 +80,21 @@ func (c *Cipher) Decrypt(dst, src []byte) {
 	c.decStream.XORKeyStream(dst, src)
 }
 
-func newAesCfbStream(key, iv []byte) (cipher.Stream, error) {
+func newAesCfbEncStream(key, iv []byte) (cipher.Stream, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 	stream := cipher.NewCFBEncrypter(block, iv)
+	return stream, nil
+}
+
+func newAesCfbDecStream(key, iv []byte) (cipher.Stream, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	stream := cipher.NewCFBDecrypter(block, iv)
 	return stream, nil
 }
 

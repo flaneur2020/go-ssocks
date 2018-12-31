@@ -10,7 +10,10 @@ import (
 )
 
 type LocalServer struct {
-	listenAddr string
+	listenAddr   string
+	remoteAddr   string
+	password     string
+	cipherMethod string
 }
 
 type socksRequest struct {
@@ -19,6 +22,11 @@ type socksRequest struct {
 	AddrType byte
 	Addr     []byte
 	Port     uint16
+	AddrBuf  []byte
+}
+
+func (r *socksRequest) String() string {
+	return fmt.Sprintf("[cmd: %d, addrType: %d, addr:port: %s:%d, addrBuf: %v]", r.Cmd, r.AddrType, r.Addr, r.Port, r.AddrBuf)
 }
 
 var (
@@ -39,8 +47,14 @@ const (
 	addrTypeIPv6   = 4
 )
 
-func NewLocalServer(listenAddr string) *LocalServer {
-	return &LocalServer{listenAddr: listenAddr}
+func NewLocalServer(listenAddr, remoteAddr, password, cipherMethod string) (*LocalServer, error) {
+	s := &LocalServer{
+		listenAddr:   listenAddr,
+		remoteAddr:   remoteAddr,
+		password:     password,
+		cipherMethod: cipherMethod,
+	}
+	return s, nil
 }
 
 func (s *LocalServer) ListenAndServe() {
@@ -74,17 +88,27 @@ func (s *LocalServer) handleConnection(conn net.Conn) {
 		log.Printf("SOCKS5 readRequest error: %s\n", err)
 		return
 	}
-	log.Printf("get request: %v\n", req)
+	log.Printf("get request: %s\n", req)
 	// send confirmation
 	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	if err != nil {
 		log.Printf("SOCKS5 conn confirmation error: %s\n", err)
 		return
 	}
-	s.handleProxy(conn)
+	s.handleProxy(conn, req)
 }
 
-func (s *LocalServer) handleProxy(conn net.Conn) {
+func (s *LocalServer) handleProxy(clientConn net.Conn, r *socksRequest) {
+	log.Printf("handleProxy\n")
+	defer clientConn.Close()
+	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.AddrBuf)
+	if err != nil {
+		log.Printf("fail on Dail %s", s.remoteAddr)
+		return
+	}
+	defer ssconn.Close()
+	go Pipe("c2s", clientConn, ssconn)
+	Pipe("s2c", ssconn, clientConn)
 }
 
 func handshake(conn net.Conn) error {
@@ -122,6 +146,7 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	buf := make([]byte, 263)
 	req := socksRequest{}
 	offset := 0
+	offsetAddrBuf := 3
 	// read the first 4 bytes as request head
 	n, err := io.ReadFull(conn, buf[0:4])
 	if err != nil {
@@ -156,6 +181,7 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	// read the port
 	n, err = io.ReadFull(conn, buf[offset:(offset+2)])
 	req.Port = binary.BigEndian.Uint16(buf[offset : offset+2])
+	req.AddrBuf = buf[offsetAddrBuf : offset+2]
 	return &req, nil
 }
 

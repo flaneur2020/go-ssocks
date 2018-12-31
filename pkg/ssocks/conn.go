@@ -9,24 +9,28 @@ import (
 )
 
 type ShadowsocksConn struct {
-	conn       net.Conn
-	cipher     *Cipher
-	decIV      []byte
-	encIV      []byte
-	readBuf    []byte
-	writeBuf   []byte
-	remoteAddr string
+	conn           net.Conn
+	cipher         *Cipher
+	decIV          []byte
+	encIV          []byte
+	readBuf        []byte
+	writeBuf       []byte
+	remoteAddr     string
+	firstWriteTime time.Time
+	firstReadTime  time.Time
 }
 
 func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *ShadowsocksConn {
 	c := &ShadowsocksConn{
-		remoteAddr: remoteAddr,
-		cipher:     cipher,
-		conn:       conn,
-		decIV:      nil,
-		encIV:      nil,
-		readBuf:    make([]byte, 2048),
-		writeBuf:   make([]byte, 2048),
+		remoteAddr:     remoteAddr,
+		cipher:         cipher,
+		conn:           conn,
+		decIV:          nil,
+		encIV:          nil,
+		readBuf:        make([]byte, 2048),
+		writeBuf:       make([]byte, 2048),
+		firstReadTime:  time.Unix(0, 0),
+		firstWriteTime: time.Unix(0, 0),
 	}
 	return c
 }
@@ -63,6 +67,7 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 			return 0, err
 		}
 		sc.cipher.SetupDecrypt(decIV)
+		sc.firstReadTime = time.Now()
 		sc.decIV = decIV
 	}
 	// log.Printf("ssconn: read: decIV: %v\n", sc.decIv)
@@ -87,6 +92,7 @@ func (sc *ShadowsocksConn) Write(b []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		sc.firstWriteTime = time.Now()
 		sc.encIV = encIV
 	}
 	cipherBuf := sc.writeBuf
@@ -99,4 +105,9 @@ func (sc *ShadowsocksConn) Write(b []byte) (int, error) {
 	sc.cipher.Encrypt(cipherBuf, b)
 	n, err := sc.conn.Write(cipherBuf)
 	return n, err
+}
+
+func (sc *ShadowsocksConn) Latency() time.Duration {
+	d := sc.firstReadTime.Sub(sc.firstWriteTime)
+	return d
 }

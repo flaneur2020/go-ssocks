@@ -16,6 +16,7 @@ type LocalServer struct {
 	remoteAddr   string
 	password     string
 	cipherMethod string
+	bounce       uint64
 }
 
 type socksRequest struct {
@@ -55,6 +56,7 @@ func NewLocalServer(listenAddr, remoteAddr, password, cipherMethod string) (*Loc
 		remoteAddr:   remoteAddr,
 		password:     password,
 		cipherMethod: cipherMethod,
+		bounce:       0,
 	}
 	return s, nil
 }
@@ -101,17 +103,22 @@ func (s *LocalServer) handleConnection(conn net.Conn) {
 }
 
 func (s *LocalServer) handleProxy(clientConn net.Conn, r *socksRequest) {
-	log.Printf("handleProxy: %s\n", r)
-	defer log.Printf("handleProxy finished: %s\n", r)
+	s.bounce += 1
+	bounce := s.bounce
+	log.Printf("handleProxy: #%d %s\n", bounce, r)
+	defer log.Printf("handleProxy #%d finished: %s\n", bounce, r)
 	defer clientConn.Close()
 	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.RawAddr, 5*time.Second)
 	if err != nil {
 		log.Printf("fail on Dail %s", s.remoteAddr)
 		return
 	}
-	defer ssconn.Close()
-	go Pipe("c2s", clientConn, ssconn)
-	Pipe("s2c", ssconn, clientConn)
+	defer func() {
+		ssconn.Close()
+		log.Printf("#%d latency: %.2fms", bounce, ssconn.Latency().Seconds()*1000)
+	}()
+	go Pipe(fmt.Sprintf("#%d:c2s", bounce), clientConn, ssconn)
+	Pipe(fmt.Sprintf("#%d:s2c", bounce), ssconn, clientConn)
 }
 
 func handshake(conn net.Conn) error {

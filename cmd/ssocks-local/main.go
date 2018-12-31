@@ -17,9 +17,11 @@ type CmdOptions struct {
 func main() {
 	opt := CmdOptions{}
 	flag.StringVar(&opt.ServerAddr, "s", "", "server address")
-	flag.IntVar(&opt.ListenPort, "p", 0, "listen port")
-	flag.StringVar(&opt.Password, "P", "", "password")
+	flag.IntVar(&opt.ListenPort, "P", 9090, "listen port")
+	flag.StringVar(&opt.Password, "p", "", "password")
 	flag.StringVar(&opt.CipherMethod, "m", "", "cipher method")
+	flag.Parse()
+
 	listenAddr := fmt.Sprintf("0.0.0.0:%d", opt.ListenPort)
 	s, err := ssocks.NewLocalServer(listenAddr, opt.ServerAddr, opt.Password, opt.CipherMethod)
 	if err != nil {

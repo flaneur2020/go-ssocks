@@ -23,11 +23,11 @@ type socksRequest struct {
 	AddrType byte
 	Addr     []byte
 	Port     uint16
-	AddrBuf  []byte
+	RawAddr  []byte
 }
 
 func (r *socksRequest) String() string {
-	return fmt.Sprintf("[cmd: %d, addrType: %d, addr:port: %s:%d, addrBuf: %v]", r.Cmd, r.AddrType, r.Addr, r.Port, r.AddrBuf)
+	return fmt.Sprintf("[cmd: %d, addrType: %d, addr:port: %s:%d, rawAddr: %v]", r.Cmd, r.AddrType, r.Addr, r.Port, r.RawAddr)
 }
 
 var (
@@ -103,7 +103,7 @@ func (s *LocalServer) handleProxy(clientConn net.Conn, r *socksRequest) {
 	log.Printf("handleProxy: %s\n", r)
 	defer log.Printf("handleProxy finished: %s\n", r)
 	defer clientConn.Close()
-	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.AddrBuf, 5*time.Second)
+	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.RawAddr, 5*time.Second)
 	if err != nil {
 		log.Printf("fail on Dail %s", s.remoteAddr)
 		return
@@ -148,7 +148,7 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	buf := make([]byte, 263)
 	req := socksRequest{}
 	offset := 0
-	offsetAddrBuf := 3
+	offsetRawAddr := 3
 	// read the first 4 bytes as request head
 	n, err := io.ReadFull(conn, buf[0:4])
 	if err != nil {
@@ -183,7 +183,7 @@ func readRequest(conn net.Conn) (*socksRequest, error) {
 	// read the port
 	n, err = io.ReadFull(conn, buf[offset:(offset+2)])
 	req.Port = binary.BigEndian.Uint16(buf[offset : offset+2])
-	req.AddrBuf = buf[offsetAddrBuf : offset+2]
+	req.RawAddr = buf[offsetRawAddr : offset+2]
 	return &req, nil
 }
 

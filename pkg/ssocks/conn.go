@@ -31,7 +31,7 @@ func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *Shado
 	return c
 }
 
-func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte, readTimeout time.Duration) (*ShadowsocksConn, error) {
+func Dial(remoteAddr, password, cipherMethod string, rawAddr []byte, readTimeout time.Duration) (*ShadowsocksConn, error) {
 	cipher, err := NewCipher(cipherMethod, password)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte, readTimeout
 	}
 	conn.SetReadDeadline(time.Now().Add(readTimeout))
 	ssconn := NewShadowsocksConn(remoteAddr, cipher, conn)
-	_, err = ssconn.Write(addrBuf)
+	_, err = ssconn.Write(rawAddr)
 	if err != nil {
 		conn.Close()
 		return nil, err

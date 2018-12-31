@@ -13,8 +13,7 @@ import (
 var errInvalidCipherMethod = errors.New("invalid cipher method")
 
 type Cipher struct {
-	IvLen        int
-	EncIv        []byte
+	IVLen        int
 	key          []byte
 	cipherMethod string
 	encStream    cipher.Stream
@@ -23,7 +22,7 @@ type Cipher struct {
 
 type cipherMethod struct {
 	KeyLen       int
-	IvLen        int
+	IVLen        int
 	NewEncStream func(key []byte, iv []byte) (cipher.Stream, error)
 	NewDecStream func(key []byte, iv []byte) (cipher.Stream, error)
 }
@@ -38,23 +37,34 @@ func NewCipher(cipherMethod string, password string) (*Cipher, error) {
 		return nil, errInvalidCipherMethod
 	}
 	key := evpBytesToKey([]byte(password), m.KeyLen)
-	encIv := genIV(m.IvLen)
-	encStream, err := m.NewEncStream(key, encIv)
-	if err != nil {
-		panic(fmt.Sprintf("fail to new encStream: %s", err))
-	}
 	c := Cipher{
 		key:          key,
-		IvLen:        m.IvLen,
-		EncIv:        encIv,
-		encStream:    encStream,
+		IVLen:        m.IVLen,
+		encStream:    nil,
 		decStream:    nil,
 		cipherMethod: cipherMethod,
 	}
 	return &c, nil
 }
 
-func (c *Cipher) SetupDecryptIV(iv []byte) {
+func (c *Cipher) SetupEntrypt() []byte {
+	if c.encStream != nil {
+		panic("decStream has already been setuped")
+	}
+	m, ok := cipherMethodMap[c.cipherMethod]
+	if !ok {
+		panic(fmt.Sprintf("cipherMethod(%s) not found", c.cipherMethod))
+	}
+	encIv := genIV(m.IVLen)
+	encStream, err := m.NewEncStream(c.key, encIv)
+	if err != nil {
+		panic(fmt.Sprintf("fail to new decStream: %s", err))
+	}
+	c.encStream = encStream
+	return encIv
+}
+
+func (c *Cipher) SetupDecrypt(iv []byte) {
 	if c.decStream != nil {
 		panic("decStream has already been setuped")
 	}
@@ -70,12 +80,15 @@ func (c *Cipher) SetupDecryptIV(iv []byte) {
 }
 
 func (c *Cipher) Encrypt(dst, src []byte) {
+	if c.encStream == nil {
+		panic("encStream has not been setuped yet, please SetupEntrypt() first")
+	}
 	c.encStream.XORKeyStream(dst, src)
 }
 
 func (c *Cipher) Decrypt(dst, src []byte) {
 	if c.decStream == nil {
-		panic("decStream has not been setuped yet, please setupDecryptIV() first")
+		panic("decStream has not been setuped yet, please SetupDecrypt() first")
 	}
 	c.decStream.XORKeyStream(dst, src)
 }

@@ -11,8 +11,8 @@ import (
 type ShadowsocksConn struct {
 	conn       net.Conn
 	cipher     *Cipher
-	decIv      []byte
-	encIv      []byte
+	decIV      []byte
+	encIV      []byte
 	readBuf    []byte
 	writeBuf   []byte
 	remoteAddr string
@@ -23,8 +23,8 @@ func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *Shado
 		remoteAddr: remoteAddr,
 		cipher:     cipher,
 		conn:       conn,
-		decIv:      nil,
-		encIv:      nil,
+		decIV:      nil,
+		encIV:      nil,
 		readBuf:    make([]byte, 2048),
 		writeBuf:   make([]byte, 2048),
 	}
@@ -55,17 +55,17 @@ func (sc *ShadowsocksConn) Close() {
 }
 
 func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
-	if sc.decIv == nil {
-		decIv := make([]byte, sc.cipher.IvLen)
-		_, err := io.ReadFull(sc.conn, decIv)
+	if sc.decIV == nil {
+		decIV := make([]byte, sc.cipher.IVLen)
+		_, err := io.ReadFull(sc.conn, decIV)
 		if err != nil {
 			log.Printf("read dec iv failed")
 			return 0, err
 		}
-		sc.cipher.SetupDecryptIV(decIv)
-		sc.decIv = decIv
+		sc.cipher.SetupDecrypt(decIV)
+		sc.decIV = decIV
 	}
-	// log.Printf("ssconn: read: decIv: %v\n", sc.decIv)
+	// log.Printf("ssconn: read: decIV: %v\n", sc.decIv)
 	cipherBuf := sc.readBuf
 	if len(b) > len(cipherBuf) {
 		log.Printf("ShadowsocksConn.Read got buf(%d) longer than readBuf(%d)\n", len(b), len(cipherBuf))
@@ -81,12 +81,13 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 }
 
 func (sc *ShadowsocksConn) Write(b []byte) (int, error) {
-	if sc.encIv == nil {
-		_, err := sc.conn.Write(sc.cipher.EncIv)
+	if sc.encIV == nil {
+		encIV := sc.cipher.SetupEntrypt()
+		_, err := sc.conn.Write(encIV)
 		if err != nil {
 			return 0, err
 		}
-		sc.encIv = sc.cipher.EncIv
+		sc.encIV = encIV
 	}
 	cipherBuf := sc.writeBuf
 	if len(b) > len(cipherBuf) {

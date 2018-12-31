@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -27,7 +28,7 @@ type socksRequest struct {
 }
 
 func (r *socksRequest) String() string {
-	return fmt.Sprintf("[cmd: %d, addrType: %d, addr:port: %s:%d, rawAddr: %v]", r.Cmd, r.AddrType, r.Addr, r.Port, r.RawAddr)
+	return fmt.Sprintf("[cmd: %d, addrType: %d, addr:port: %s:%d]", r.Cmd, r.AddrType, strings.TrimSpace(string(r.Addr)), r.Port)
 }
 
 var (

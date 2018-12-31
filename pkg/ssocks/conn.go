@@ -18,7 +18,7 @@ func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *Shado
 }
 
 func Dial(remoteAddr, password, cipherMethod string) (*ShadowsocksConn, error) {
-	cipher, err := NewCipher()
+	cipher, err := NewCipher(cipherMethod, password)
 	if err != nil {
 		return nil, err
 	}

@@ -5,13 +5,17 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 )
 
+var errInvalidCipherMethod = errors.New("invalid cipher method")
+
 type Cipher struct {
 	cipherMethod string
 	key          []byte
+	encIV        []byte
 	encStream    cipher.Stream
 	decStream    cipher.Stream
 }
@@ -26,27 +30,35 @@ var cipherMethodMap = map[string]cipherMethod{
 	"aes-128-cfb": {16, 16, newAesCfbStream},
 }
 
-func NewCipher(cipherMethod string, password []byte) (*Cipher, error) {
-	m := cipherMethodMap[cipherMethod]
-	key := evpBytesToKey(password, m.KeyLen)
-	iv := genIV(m.IvLen)
-	encStream, err := m.NewStreamFunc(key, iv)
+func NewCipher(cipherMethod string, password string) (*Cipher, error) {
+	m, ok := cipherMethodMap[cipherMethod]
+	if !ok {
+		return nil, errInvalidCipherMethod
+	}
+	key := evpBytesToKey([]byte(password), m.KeyLen)
+	encIV := genIV(m.IvLen)
+	encStream, err := m.NewStreamFunc(key, encIV)
 	if err != nil {
 		panic(fmt.Sprintf("fail to new encStream: %s", err))
 	}
 	c := Cipher{
-		key:       key,
-		encStream: encStream,
-		decStream: nil,
+		key:          key,
+		encIV:        encIV,
+		encStream:    encStream,
+		decStream:    nil,
+		cipherMethod: cipherMethod,
 	}
 	return &c, nil
 }
 
-func (c *Cipher) setupDecryptIV(iv []byte) {
+func (c *Cipher) SetupDecryptIV(iv []byte) {
 	if c.decStream != nil {
 		panic("decStream has already been setuped")
 	}
-	m := cipherMethodMap[c.cipherMethod]
+	m, ok := cipherMethodMap[c.cipherMethod]
+	if !ok {
+		panic(fmt.Sprintf("cipherMethod(%s) not found", c.cipherMethod))
+	}
 	decStream, err := m.NewStreamFunc(c.key, iv)
 	if err != nil {
 		panic(fmt.Sprintf("fail to new decStream: %s", err))
@@ -54,11 +66,11 @@ func (c *Cipher) setupDecryptIV(iv []byte) {
 	c.decStream = decStream
 }
 
-func (c *Cipher) encrypt(dst, src []byte) {
+func (c *Cipher) Encrypt(dst, src []byte) {
 	c.encStream.XORKeyStream(dst, src)
 }
 
-func (c *Cipher) decrypt(dst, src []byte) {
+func (c *Cipher) Decrypt(dst, src []byte) {
 	if c.decStream == nil {
 		panic("decStream has not been setuped yet, please setupDecryptIV() first")
 	}

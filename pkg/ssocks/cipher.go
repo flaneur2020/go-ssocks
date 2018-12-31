@@ -13,9 +13,10 @@ import (
 var errInvalidCipherMethod = errors.New("invalid cipher method")
 
 type Cipher struct {
-	cipherMethod string
+	IvLen        int
+	EncIv        []byte
 	key          []byte
-	encIV        []byte
+	cipherMethod string
 	encStream    cipher.Stream
 	decStream    cipher.Stream
 }
@@ -36,14 +37,15 @@ func NewCipher(cipherMethod string, password string) (*Cipher, error) {
 		return nil, errInvalidCipherMethod
 	}
 	key := evpBytesToKey([]byte(password), m.KeyLen)
-	encIV := genIV(m.IvLen)
-	encStream, err := m.NewStreamFunc(key, encIV)
+	encIv := genIV(m.IvLen)
+	encStream, err := m.NewStreamFunc(key, encIv)
 	if err != nil {
 		panic(fmt.Sprintf("fail to new encStream: %s", err))
 	}
 	c := Cipher{
 		key:          key,
-		encIV:        encIV,
+		IvLen:        m.IvLen,
+		EncIv:        encIv,
 		encStream:    encStream,
 		decStream:    nil,
 		cipherMethod: cipherMethod,

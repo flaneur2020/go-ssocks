@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 )
 
 type LocalServer struct {
@@ -88,7 +89,7 @@ func (s *LocalServer) handleConnection(conn net.Conn) {
 		log.Printf("SOCKS5 readRequest error: %s\n", err)
 		return
 	}
-	log.Printf("get request: %s\n", req)
+	// log.Printf("get request: %s\n", req)
 	// send confirmation
 	_, err = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x43})
 	if err != nil {
@@ -99,9 +100,10 @@ func (s *LocalServer) handleConnection(conn net.Conn) {
 }
 
 func (s *LocalServer) handleProxy(clientConn net.Conn, r *socksRequest) {
-	log.Printf("handleProxy\n")
+	log.Printf("handleProxy: %s\n", r)
+	defer log.Printf("handleProxy finished: %s\n", r)
 	defer clientConn.Close()
-	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.AddrBuf)
+	ssconn, err := Dial(s.remoteAddr, s.password, s.cipherMethod, r.AddrBuf, 5*time.Second)
 	if err != nil {
 		log.Printf("fail on Dail %s", s.remoteAddr)
 		return

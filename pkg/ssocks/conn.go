@@ -3,6 +3,7 @@ package ssocks
 import (
 	"io"
 	"net"
+	"time"
 
 	"log"
 )
@@ -24,13 +25,13 @@ func NewShadowsocksConn(remoteAddr string, cipher *Cipher, conn net.Conn) *Shado
 		conn:       conn,
 		decIv:      nil,
 		encIv:      nil,
-		readBuf:    make([]byte, 512),
-		writeBuf:   make([]byte, 512),
+		readBuf:    make([]byte, 2048),
+		writeBuf:   make([]byte, 2048),
 	}
 	return c
 }
 
-func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte) (*ShadowsocksConn, error) {
+func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte, readTimeout time.Duration) (*ShadowsocksConn, error) {
 	cipher, err := NewCipher(cipherMethod, password)
 	if err != nil {
 		return nil, err
@@ -39,6 +40,7 @@ func Dial(remoteAddr, password, cipherMethod string, addrBuf []byte) (*Shadowsoc
 	if err != nil {
 		return nil, err
 	}
+	conn.SetReadDeadline(time.Now().Add(readTimeout))
 	ssconn := NewShadowsocksConn(remoteAddr, cipher, conn)
 	_, err = ssconn.Write(addrBuf)
 	if err != nil {
@@ -63,7 +65,7 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 		sc.cipher.SetupDecryptIV(decIv)
 		sc.decIv = decIv
 	}
-	log.Printf("ssconn: read: decIv: %v\n", sc.decIv)
+	// log.Printf("ssconn: read: decIv: %v\n", sc.decIv)
 	cipherBuf := sc.readBuf
 	if len(b) > len(cipherBuf) {
 		log.Printf("ShadowsocksConn.Read got buf(%d) longer than readBuf(%d)\n", len(b), len(cipherBuf))
@@ -72,11 +74,9 @@ func (sc *ShadowsocksConn) Read(b []byte) (int, error) {
 		cipherBuf = cipherBuf[:len(b)]
 	}
 	n, err := sc.conn.Read(cipherBuf)
-	log.Printf("Read raw b: %v n:%d", cipherBuf[0:n], n)
 	if n > 0 {
 		sc.cipher.Decrypt(b[0:n], cipherBuf[0:n])
 	}
-	log.Printf("Read b: %v n:%d", b[0:n], n)
 	return n, err
 }
 
